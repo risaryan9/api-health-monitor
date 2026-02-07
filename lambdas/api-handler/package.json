@@ -1,0 +1,9 @@
+{
+  "name": "api-handler",
+  "version": "1.0.0",
+  "description": "API Handler for Monitor CRUD operations",
+  "main": "index.js",
+  "dependencies": {
+    "uuid": "^9.0.0"
+  }
+}

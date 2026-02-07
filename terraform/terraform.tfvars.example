@@ -1,0 +1,13 @@
+# AWS Configuration
+aws_region = "us-east-1"
+
+# Project Configuration
+project_name = "api-health-monitor"
+
+# Alert Configuration
+alert_email = "your-email@example.com"
+
+# Health Check Configuration
+check_interval_minutes = 1
+lambda_timeout = 30
+sqs_visibility_timeout = 30

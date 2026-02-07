@@ -1,0 +1,7 @@
+{
+  "name": "orchestrator",
+  "version": "1.0.0",
+  "description": "Orchestrator for health checks",
+  "main": "index.js",
+  "dependencies": {}
+}
