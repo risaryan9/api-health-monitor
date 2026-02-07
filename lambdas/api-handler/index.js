@@ -14,7 +14,9 @@ const headers = {
 exports.handler = async (event) => {
   console.log('Event:', JSON.stringify(event, null, 2));
   
-  const path = event.path;
+  // Normalize path: strip stage prefix if present (/prod/monitors -> /monitors)
+  const rawPath = event.path || '';
+  const path = rawPath.replace(/^\/[^/]+\//, '/') || rawPath;
   const method = event.httpMethod;
   
   try {
@@ -73,9 +75,9 @@ exports.handler = async (event) => {
       };
     }
     
-    // DELETE /monitors/{id}
-    if (path.startsWith('/monitors/') && method === 'DELETE') {
-      const monitorId = path.split('/')[2];
+    // DELETE /monitors/{id} (path may be /monitors/{id} or /prod/monitors/{id})
+    if (path.includes('/monitors/') && method === 'DELETE') {
+      const monitorId = path.split('/').filter(Boolean).pop();
       
       await dynamodb.delete({
         TableName: MONITOR_CONFIGS_TABLE,
