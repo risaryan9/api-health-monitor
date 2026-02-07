@@ -113,6 +113,49 @@ header p {
     background: #dc2626;
 }
 
+.btn-secondary {
+    background: #10b981;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.btn-secondary:hover {
+    background: #059669;
+}
+
+.filter-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.filter-tab {
+    padding: 8px 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    background: white;
+    cursor: pointer;
+    font-weight: 500;
+    color: #666;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.filter-tab:hover {
+    border-color: #667eea;
+    color: #333;
+}
+
+.filter-tab.active {
+    border-color: #667eea;
+    background: #667eea;
+    color: white;
+}
+
 .monitor-item {
     border: 2px solid #e0e0e0;
     border-radius: 8px;
@@ -123,6 +166,11 @@ header p {
 
 .monitor-item:hover {
     border-color: #667eea;
+}
+
+.monitor-item.inactive {
+    opacity: 0.85;
+    border-style: dashed;
 }
 
 .monitor-header {

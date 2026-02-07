@@ -7,7 +7,7 @@ const MONITOR_CONFIGS_TABLE = process.env.MONITOR_CONFIGS_TABLE;
 const headers = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
   'Content-Type': 'application/json'
 };
 
@@ -75,6 +75,34 @@ exports.handler = async (event) => {
       };
     }
     
+    // PATCH /monitors/{id} - Update isActive (path may include stage prefix)
+    if (path.includes('/monitors/') && method === 'PATCH') {
+      const monitorId = path.split('/').filter(Boolean).pop();
+      const body = event.body ? JSON.parse(event.body) : {};
+      const isActive = body.isActive;
+
+      if (isActive !== 'true' && isActive !== 'false') {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: 'Body must contain isActive: "true" or "false"' })
+        };
+      }
+
+      await dynamodb.update({
+        TableName: MONITOR_CONFIGS_TABLE,
+        Key: { monitorId },
+        UpdateExpression: 'SET isActive = :a, updatedAt = :t',
+        ExpressionAttributeValues: { ':a': isActive, ':t': Date.now() }
+      }).promise();
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ message: 'Monitor updated', isActive })
+      };
+    }
+
     // DELETE /monitors/{id} (path may be /monitors/{id} or /prod/monitors/{id})
     if (path.includes('/monitors/') && method === 'DELETE') {
       const monitorId = path.split('/').filter(Boolean).pop();

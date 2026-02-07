@@ -1,157 +1,101 @@
-# API Health Monitoring System
+# API Health Monitor
 
-A self-hosted, scalable API health monitoring system built with AWS serverless architecture.
+**Demo video (part 1):** [Placeholder link to drive demo video 1]  
+**Demo video (part 2):** [Placeholder link to drive demo video 2]
 
-## 🏗️ Architecture
+---
 
-```
-User → S3 Website → API Gateway → Lambda (API) → DynamoDB (Configs)
-                                                       
-EventBridge (Scheduler) → Lambda (Orchestrator) → SQS Queue
-                                                       ↓
-                                        Lambda (Worker) → Health Checks
-                                                       ↓
-                                        DynamoDB (Metrics) + SNS → SES
-```
+## Overview
 
-## 🚀 Quick Start
+- Self-hosted API health monitoring system built on AWS serverless components.
+- Users create monitors (endpoint URL, method, expected status, timeout, check interval, alert email, failure threshold).
+- System runs periodic health checks, stores metrics, and sends email alerts when a monitor becomes unhealthy or recovers.
+- All infrastructure is defined in Terraform; deployment and teardown are automated with bash scripts.
 
-### Prerequisites
-- AWS Account with configured credentials (`aws configure`)
-- Terraform >= 1.0
-- Node.js >= 18
-- Bash shell
+---
 
-### Installation
+## Table of Contents
 
-```bash
-git clone <your-repo-url>
-cd api-health-monitor
-chmod +x *.sh
-./install.sh
-```
+- [Architecture](#architecture)
+- [Key Design Decisions](#key-design-decisions)
+- [Prerequisites](#prerequisites)
+- [Installation Instructions](#installation-instructions)
+- [Troubleshooting Guide](#troubleshooting-guide)
+- [Recap](#recap)
+- [Credits](#credits)
 
-Installation takes ~5-7 minutes and will:
-1. Deploy AWS infrastructure
-2. Package and deploy Lambda functions  
-3. Deploy frontend website
-4. Configure SES email verification
+**Other documentation:**
 
-### Cleanup
+- [Terraform](docs/terraform.md) – Infrastructure as code, resources, and outputs.
+- [Lambda functions](docs/lambdas.md) – API handler, orchestrator, and worker.
+- [Bash scripts](docs/bash-scripts.md) – install.sh and shutdown.sh.
 
-```bash
-./shutdown.sh
-```
+---
 
-## 📖 Usage
+## Architecture
 
-1. Open the website URL provided after installation
-2. Create a monitor with:
-   - Name, endpoint URL, expected status
-   - Timeout, check interval, failure threshold
-   - Alert email address
-3. Wait 1-2 minutes for first health check
-4. Receive email alerts when APIs go down
+- **Frontend:** Static site (HTML/CSS/JS) hosted on S3; uses API Gateway base URL for all API calls.
+- **API:** API Gateway REST API (prod stage) with proxy integration to the api-handler Lambda; routes: GET/POST /monitors, DELETE /monitors/{id}.
+- **Data:** DynamoDB – MonitorConfigs (monitor definitions), HealthMetrics (per-check results with state and consecutive failure count).
+- **Scheduling:** EventBridge rule triggers the orchestrator Lambda on a fixed rate (e.g. every 1 minute).
+- **Queue:** SQS queue holds one message per monitor per run; worker Lambda consumes messages.
+- **Workers:** Worker Lambda performs HTTP checks, updates HealthMetrics, and sends SNS alerts (unhealthy when threshold reached, recovery when back to healthy).
+- **Alerts:** SNS topic with email subscription (alert email); SES used to verify the email address. User must confirm SNS subscription in the email.
 
-### Test Endpoints
+---
 
-```
-✅ Always UP:    https://httpstat.us/200
-❌ Always DOWN:  https://httpstat.us/500
-⏱️  Slow (2s):    https://httpstat.us/200?sleep=2000
-```
+## Key Design Decisions
 
-## 🏛️ Architecture Details
+- **Single EventBridge schedule:** One rule drives all monitors; orchestrator queries active monitors and fans out to SQS for parallel worker execution.
+- **Failure and recovery logic:** Consecutive failures increment and cap at threshold; consecutive successes decrement to zero. Unhealthy alert when threshold is first reached; recovery alert when failures return to zero.
+- **Path normalization in API handler:** Request path may include stage (e.g. /prod/monitors); handler strips optional first segment so routes work with or without it; DELETE uses last path segment as monitor ID.
+- **Terraform outputs as source of truth:** Install script reads Lambda names, bucket name, API URL from terraform output -json; no hardcoded resource names in scripts.
+- **Node 18 and aws-sdk:** All Lambdas declare aws-sdk (and worker declares axios) in package.json and ship node_modules in the zip; runtime does not bundle aws-sdk.
 
-### Key Components
-- **S3**: Static website hosting
-- **API Gateway + Lambda**: RESTful API for CRUD  
-- **DynamoDB**: Monitor configs and metrics storage
-- **EventBridge**: Scheduled health check triggers (every 1 min)
-- **SQS**: Fan-out pattern for parallel execution
-- **Lambda Workers**: Execute health checks concurrently
-- **SNS + SES**: Email notifications
+---
 
-### Scalability
+## Prerequisites
 
-| Monitors | Processing Time | Workers |
-|----------|----------------|---------|
-| 100      | ~5 seconds     | 10-20   |
-| 1,000    | ~15 seconds    | 100-200 |
-| 10,000   | ~30 seconds    | 500+    |
+- AWS account with credentials configured (`aws configure`).
+- Terraform >= 1.0.
+- Node.js >= 18 and npm.
+- Bash shell.
+- zip (for packaging Lambdas).
+- Optional: jq (for reliable parsing of Terraform outputs in install script).
 
-### Cost Estimate
+---
 
-For 1,000 monitors checked every minute: **~$12/month**
+## Installation Instructions
 
-## 🔧 Configuration
+- Clone the repository and from the project root run: `chmod +x *.sh` then `./install.sh`.
+- Script will: check prerequisites; prompt for alert email and region if terraform.tfvars is missing; package all three Lambdas; run Terraform init, plan, apply; deploy Lambda code; deploy frontend to S3; print website URL, API URL, and next steps.
+- After install: open the website URL; create a monitor; confirm SNS subscription and SES verification for the alert email; wait for the first health checks (interval depends on check_interval_minutes).
+- To destroy all resources: run `./shutdown.sh` and type `yes` when prompted.
 
-Edit `terraform/terraform.tfvars`:
+---
 
-```hcl
-aws_region = "us-east-1"
-project_name = "api-health-monitor"
-alert_email = "your-email@example.com"
-check_interval_minutes = 1
-lambda_timeout = 30
-```
+## Troubleshooting Guide
 
-## 📊 Monitoring
+- **Lambda "Cannot find module 'aws-sdk'":** Add aws-sdk to the Lambda’s package.json, run npm install in that Lambda directory, rebuild the zip, and redeploy with `aws lambda update-function-code`. See [Lambda functions](docs/lambdas.md).
+- **HealthMetrics not updating:** Confirm orchestrator and worker have aws-sdk in package.json and are deployed; check CloudWatch logs for orchestrator (should log "Found N active monitors") and worker (should log "Checking monitor: ..."); ensure EventBridge rule is enabled and SQS queue is attached to worker.
+- **SNS subscription "Pending confirmation":** Confirm the SNS subscription by opening the email from AWS SNS and clicking the confirmation link; SES verification is separate from SNS subscription confirmation.
+- **API 403 or 404:** Use the full API Gateway URL including the stage (e.g. https://xxx.execute-api.region.amazonaws.com/prod); frontend should use the Terraform output api_gateway_url without appending /prod again.
+- **DELETE monitor not removing:** Ensure API handler is redeployed with path normalization and monitor ID from last path segment; check Lambda logs for the received path and extracted ID.
+- **Website URL wrong format:** Terraform output website_url must use format bucket.s3-website.region.amazonaws.com (dot before region); fix in outputs.tf if it used a hyphen.
+- **Empty Lambda names in install script:** Ensure terraform-outputs.json exists after apply; install script uses get_tf_output (jq or python3); install jq or fix JSON parsing if values are empty.
 
-```bash
-# View Lambda logs
-aws logs tail /aws/lambda/api-health-monitor-worker --follow
+---
 
-# List monitors
-aws dynamodb scan --table-name MonitorConfigs
+## Recap
 
-# Check SQS queue
-aws sqs get-queue-attributes --queue-url <url> --attribute-names All
-```
+- Monitors are stored in DynamoDB; health checks run on a schedule and results are written to HealthMetrics.
+- Alerts are sent via SNS (email) when a monitor hits the failure threshold and when it recovers to zero failures.
+- Deleting a monitor from the UI removes it from MonitorConfigs; no further checks or alerts are queued for it.
+- Full deployment and teardown are automated via install.sh and shutdown.sh; details are in the linked docs.
 
-## 📁 Project Structure
+---
 
-```
-api-health-monitor/
-├── README.md              # This file
-├── DESIGN.md              # Architecture decisions
-├── install.sh             # Automated deployment
-├── shutdown.sh            # Cleanup script
-├── terraform/             # Infrastructure as Code
-│   ├── main.tf
-│   ├── lambda.tf
-│   ├── dynamodb.tf
-│   ├── sqs.tf
-│   ├── api-gateway.tf
-│   └── ...
-├── lambdas/               # Lambda functions
-│   ├── api-handler/       # CRUD API
-│   ├── orchestrator/      # Health check scheduler  
-│   └── worker/            # Health check executor
-└── frontend/              # Static website
-    ├── index.html
-    ├── style.css
-    └── app.js
-```
+## Credits
 
-## 🛠️ Troubleshooting
-
-**Email not received?**
-- Check spam folder
-- Verify email in AWS SES console
-
-**Monitor not checking?**
-- Check EventBridge rule is enabled
-- View orchestrator logs
-
-**Terraform errors?**
-- Run `./shutdown.sh` first
-- Then `./install.sh` again
-
-## 📄 License
-
-MIT License - See LICENSE file
-
-## 🙏 Acknowledgments
-
-Built for DevOps Internship Assignment 2026
+- **By:** [Abhiram Rakesh](https://www.linkedin.com/in/abhiram-rakesh/)
+- **For:** Hyperverge
