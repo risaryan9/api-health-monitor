@@ -1,0 +1,87 @@
+%% API Health Monitor - Architecture Diagram
+%% Use in: Mermaid Live (mermaid.live), draw.io (Insert > Advanced > Mermaid), or any Mermaid-supported tool.
+%% In draw.io: After inserting, you can replace nodes with AWS icons from Assets > More Shapes > AWS 2 / AWS Architecture 2.
+
+flowchart TB
+    subgraph User[" "]
+        U((👤 User / Browser))
+    end
+
+    subgraph Frontend["Frontend"]
+        S3["📦 S3 Bucket<br/>Static Website<br/>HTML, CSS, JS"]
+    end
+
+    subgraph API["API Layer"]
+        APIGW["🔀 API Gateway<br/>REST API /prod<br/>GET, POST, PATCH, DELETE /monitors"]
+    end
+
+    subgraph Compute["Compute - Lambda"]
+        LAPI["⚡ API Handler<br/>CRUD, path params"]
+        LORCH["⚡ Orchestrator<br/>Query active, enqueue"]
+        LWORK["⚡ Worker<br/>HTTP check, metrics, alerts"]
+    end
+
+    subgraph Data["Data Store"]
+        DBC["📋 DynamoDB<br/>MonitorConfigs<br/>monitorId, isActive GSI"]
+        DBM["📋 DynamoDB<br/>HealthMetrics<br/>monitorId, timestamp, state"]
+    end
+
+    subgraph Messaging["Messaging & Schedule"]
+        EB["⏰ EventBridge<br/>Rate rule<br/>e.g. every 1 min"]
+        SQS["📬 SQS Queue<br/>One message per monitor"]
+    end
+
+    subgraph Alerts["Alerts"]
+        SNS["📢 SNS Topic<br/>Alerts"]
+        SES["📧 SES<br/>Verify email"]
+        EMAIL((📩 Alert Email))
+    end
+
+    subgraph External["External"]
+        HTTP["🌐 Monitored APIs<br/>User-defined URLs"]
+    end
+
+    subgraph Observability["Observability"]
+        CW["📊 CloudWatch<br/>Logs per Lambda"]
+    end
+
+    %% User flow
+    U -->|"Open UI"| S3
+    S3 -->|"API calls"| APIGW
+    U -->|"Create/List/Deactivate"| APIGW
+
+    %% API Gateway to Lambda
+    APIGW -->|"Proxy"| LAPI
+    LAPI -->|"Read/Write"| DBC
+
+    %% Schedule to Orchestrator
+    EB -->|"Invoke"| LORCH
+    LORCH -->|"Query active"| DBC
+    LORCH -->|"SendMessageBatch"| SQS
+
+    %% SQS to Worker
+    SQS -->|"Trigger"| LWORK
+    LWORK -->|"GET/POST etc."| HTTP
+    LWORK -->|"PutItem (state, metrics)"| DBM
+    LWORK -->|"GetItem (previous state)"| DBM
+    LWORK -->|"Publish (unhealthy/recovery)"| SNS
+
+    %% Alerts
+    SNS -->|"Email"| SES
+    SES --> EMAIL
+
+    %% Logs
+    LAPI -.->|"Logs"| CW
+    LORCH -.->|"Logs"| CW
+    LWORK -.->|"Logs"| CW
+
+    %% Styling
+    classDef aws fill:#FF9900,stroke:#232F3E,color:#232F3E
+    classDef lambda fill:#FF9900,stroke:#232F3E,color:#232F3E
+    classDef data fill:#4053D6,stroke:#232F3E,color:#fff
+    classDef user fill:#eee,stroke:#333
+    classDef external fill:#f9f9f9,stroke:#666
+    class S3,APIGW,LAPI,LORCH,LWORK,EB,SQS,SNS,SES,DBM,DBC aws
+    class U,EMAIL user
+    class HTTP external
+    class CW data
