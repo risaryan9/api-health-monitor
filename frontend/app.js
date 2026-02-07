@@ -1,4 +1,4 @@
-const API_URL = 'API_GATEWAY_URL_PLACEHOLDER/prod';
+const API_URL = 'API_GATEWAY_URL_PLACEHOLDER';
 
 // Load monitors on page load
 document.addEventListener('DOMContentLoaded', () => {
