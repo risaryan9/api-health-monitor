@@ -4,6 +4,7 @@
   "description": "API Handler for Monitor CRUD operations",
   "main": "index.js",
   "dependencies": {
+    "aws-sdk": "^2.1690.0",
     "uuid": "^9.0.0"
   }
 }
