@@ -3,5 +3,7 @@
   "version": "1.0.0",
   "description": "Orchestrator for health checks",
   "main": "index.js",
-  "dependencies": {}
+  "dependencies": {
+    "aws-sdk": "^2.1690.0"
+  }
 }

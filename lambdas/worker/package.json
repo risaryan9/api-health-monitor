@@ -4,6 +4,7 @@
   "description": "Worker Lambda for health checks",
   "main": "index.js",
   "dependencies": {
+    "aws-sdk": "^2.1690.0",
     "axios": "^1.6.0"
   }
 }
