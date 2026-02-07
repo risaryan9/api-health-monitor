@@ -193,6 +193,17 @@ resource "aws_api_gateway_deployment" "main" {
   
   rest_api_id = aws_api_gateway_rest_api.main.id
   
+  # Force new deployment when any integration changes (so PATCH/OPTIONS on {id} go live)
+  triggers = {
+    redeployment = sha1(join(",", [
+      aws_api_gateway_integration.get_monitors.id,
+      aws_api_gateway_integration.post_monitors.id,
+      aws_api_gateway_integration.options_monitor_id.id,
+      aws_api_gateway_integration.patch_monitor.id,
+      aws_api_gateway_integration.delete_monitor.id,
+    ]))
+  }
+  
   lifecycle {
     create_before_destroy = true
   }
