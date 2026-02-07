@@ -14,9 +14,9 @@ const headers = {
 exports.handler = async (event) => {
   console.log('Event:', JSON.stringify(event, null, 2));
   
-  // Normalize path: strip stage prefix if present (/prod/monitors -> /monitors)
+  // Normalize path: strip stage prefix only when it's not "monitors" (/prod/monitors -> /monitors; /monitors/xxx stays)
   const rawPath = event.path || '';
-  const path = rawPath.replace(/^\/[^/]+\//, '/') || rawPath;
+  const path = rawPath.replace(/^\/(?!monitors\/)[^/]+\//, '/') || rawPath;
   const method = event.httpMethod;
   
   try {
@@ -75,9 +75,9 @@ exports.handler = async (event) => {
       };
     }
     
-    // PATCH /monitors/{id} - Update isActive (path may include stage prefix)
+    // PATCH /monitors/{id} - Update isActive
     if (path.includes('/monitors/') && method === 'PATCH') {
-      const monitorId = path.split('/').filter(Boolean).pop();
+      const monitorId = (event.pathParameters && event.pathParameters.id) || path.split('/').filter(Boolean).pop();
       const body = event.body ? JSON.parse(event.body) : {};
       const isActive = body.isActive;
 
@@ -103,9 +103,9 @@ exports.handler = async (event) => {
       };
     }
 
-    // DELETE /monitors/{id} (path may be /monitors/{id} or /prod/monitors/{id})
+    // DELETE /monitors/{id}
     if (path.includes('/monitors/') && method === 'DELETE') {
-      const monitorId = path.split('/').filter(Boolean).pop();
+      const monitorId = (event.pathParameters && event.pathParameters.id) || path.split('/').filter(Boolean).pop();
       
       await dynamodb.delete({
         TableName: MONITOR_CONFIGS_TABLE,
