@@ -47,25 +47,41 @@ exports.handler = async (event) => {
       
       // Get previous state
       const previousState = await getPreviousState(monitor.monitorId);
+      const previousFailures = previousState?.consecutiveFailures || 0;
       
-      // Calculate consecutive failures
-      let consecutiveFailures = previousState?.consecutiveFailures || 0;
+      // Calculate consecutive failures with new logic
+      let consecutiveFailures = 0;
       let state = 'HEALTHY';
       
       if (!health.isHealthy) {
-        consecutiveFailures++;
+        // On failure: increment but cap at threshold
+        consecutiveFailures = Math.min(previousFailures + 1, monitor.thresholdCount);
+        
         if (consecutiveFailures >= monitor.thresholdCount) {
           state = 'UNHEALTHY';
         } else {
           state = 'DEGRADED';
         }
       } else {
-        consecutiveFailures = 0;
+        // On success: decrement (gradual recovery)
+        consecutiveFailures = Math.max(0, previousFailures - 1);
+        
+        if (consecutiveFailures === 0) {
+          state = 'HEALTHY';
+        } else {
+          state = 'DEGRADED';  // Still recovering
+        }
       }
       
-      // Detect state change
-      if (previousState && state !== previousState.state && state === 'UNHEALTHY') {
-        await sendAlert(monitor, previousState.state, state, consecutiveFailures);
+      // Send alerts on state transitions
+      // 1. Unhealthy alert: when first reaching threshold
+      if (previousFailures < monitor.thresholdCount && consecutiveFailures === monitor.thresholdCount) {
+        await sendUnhealthyAlert(monitor, consecutiveFailures);
+      }
+      
+      // 2. Recovery alert: when returning to healthy (failures go from >0 to 0)
+      if (previousFailures > 0 && consecutiveFailures === 0) {
+        await sendRecoveryAlert(monitor);
       }
       
       // Store metrics
@@ -115,27 +131,39 @@ async function getPreviousState(monitorId) {
   }
 }
 
-async function sendAlert(monitor, oldState, newState, failureCount) {
-  const message = {
-    monitorName: monitor.name,
-    endpoint: monitor.endpoint,
-    oldState,
-    newState,
-    failureCount,
-    timestamp: new Date().toISOString()
-  };
+async function sendUnhealthyAlert(monitor, failureCount) {
+  const timestamp = new Date().toISOString();
   
   await sns.publish({
     TopicArn: SNS_TOPIC_ARN,
-    Subject: `🔴 Alert: ${monitor.name} is ${newState}`,
+    Subject: `🔴 Alert: ${monitor.name} is UNHEALTHY`,
     Message: `Monitor: ${monitor.name}
 Endpoint: ${monitor.endpoint}
-Status: ${oldState} → ${newState}
+Status: UNHEALTHY
 Consecutive Failures: ${failureCount}
-Time: ${message.timestamp}
+Time: ${timestamp}
 
-This monitor has exceeded the failure threshold of ${monitor.thresholdCount}.`
+This monitor has exceeded the failure threshold of ${monitor.thresholdCount}.
+The endpoint is not responding as expected.`
   }).promise();
   
-  console.log(`Alert sent for monitor ${monitor.name}`);
+  console.log(`Unhealthy alert sent for monitor ${monitor.name}`);
+}
+
+async function sendRecoveryAlert(monitor) {
+  const timestamp = new Date().toISOString();
+  
+  await sns.publish({
+    TopicArn: SNS_TOPIC_ARN,
+    Subject: `✅ Recovery: ${monitor.name} is HEALTHY`,
+    Message: `Monitor: ${monitor.name}
+Endpoint: ${monitor.endpoint}
+Status: HEALTHY (Recovered)
+Time: ${timestamp}
+
+Good news! This monitor has recovered and is now responding normally.
+All consecutive failures have been cleared.`
+  }).promise();
+  
+  console.log(`Recovery alert sent for monitor ${monitor.name}`);
 }
