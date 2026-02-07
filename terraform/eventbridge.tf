@@ -2,7 +2,7 @@ resource "aws_cloudwatch_event_rule" "health_check_schedule" {
   name                = "${var.project_name}-health-check-schedule"
   description         = "Trigger health checks every ${var.check_interval_minutes} minute(s)"
   schedule_expression = "rate(${var.check_interval_minutes} minute)"
-  is_enabled          = true
+  state               = "ENABLED"
 }
 
 resource "aws_cloudwatch_event_target" "orchestrator" {

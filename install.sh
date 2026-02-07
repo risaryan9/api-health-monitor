@@ -14,6 +14,10 @@
 
 set -e  # Exit on any error
 
+# Project root (directory containing this script)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$SCRIPT_DIR"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -186,10 +190,10 @@ deploy_infrastructure() {
     
     log_success "Infrastructure deployed successfully!"
     
-    # Save outputs to file for later use
-    terraform output -json > ../terraform-outputs.json
+    # Save outputs to file for later use (project root)
+    terraform output -json > "$ROOT_DIR/terraform-outputs.json"
     
-    cd ..
+    cd "$ROOT_DIR"
     echo ""
 }
 
@@ -228,15 +232,39 @@ package_lambdas() {
     echo ""
 }
 
+# Read a Terraform output value from terraform-outputs.json (must be run from project root)
+get_tf_output() {
+    local key="$1"
+    local outputs_file="$ROOT_DIR/terraform-outputs.json"
+    if [ ! -f "$outputs_file" ]; then
+        log_error "Terraform outputs file not found: $outputs_file (run deploy_infrastructure first)"
+        exit 1
+    fi
+    if command -v jq &> /dev/null; then
+        jq -r --arg k "$key" '.[$k].value // empty' "$outputs_file"
+    else
+        python3 -c "import json,sys; d=json.load(open('$outputs_file')); print(d.get('$key',{}).get('value','') or '')" 2>/dev/null || echo ""
+    fi
+}
+
 # Deploy Lambda functions
 deploy_lambdas() {
     log_info "Deploying Lambda functions..."
     echo ""
     
-    # Get function names from Terraform outputs
-    API_HANDLER_NAME=$(cat terraform-outputs.json | grep -o '"api_handler_function_name"[^}]*' | grep -o '"value": "[^"]*' | cut -d'"' -f4)
-    ORCHESTRATOR_NAME=$(cat terraform-outputs.json | grep -o '"orchestrator_function_name"[^}]*' | grep -o '"value": "[^"]*' | cut -d'"' -f4)
-    WORKER_NAME=$(cat terraform-outputs.json | grep -o '"worker_function_name"[^}]*' | grep -o '"value": "[^"]*' | cut -d'"' -f4)
+    cd "$ROOT_DIR"
+    
+    # Get function names from Terraform outputs (reliable JSON parsing)
+    API_HANDLER_NAME=$(get_tf_output "api_handler_function_name")
+    ORCHESTRATOR_NAME=$(get_tf_output "orchestrator_function_name")
+    WORKER_NAME=$(get_tf_output "worker_function_name")
+    
+    if [ -z "$API_HANDLER_NAME" ] || [ -z "$ORCHESTRATOR_NAME" ] || [ -z "$WORKER_NAME" ]; then
+        log_error "Could not read Lambda function names from terraform-outputs.json."
+        log_error "  api_handler: '$API_HANDLER_NAME'  orchestrator: '$ORCHESTRATOR_NAME'  worker: '$WORKER_NAME'"
+        log_error "  Ensure Terraform applied successfully and terraform-outputs.json exists in project root."
+        exit 1
+    fi
     
     # Deploy API Handler
     log_info "Deploying API Handler..."
@@ -270,9 +298,11 @@ deploy_frontend() {
     log_info "Deploying frontend to S3..."
     echo ""
     
+    cd "$ROOT_DIR"
+    
     # Get S3 bucket name and API URL from Terraform outputs
-    BUCKET_NAME=$(cat terraform-outputs.json | grep -o '"website_bucket_name"[^}]*' | grep -o '"value": "[^"]*' | cut -d'"' -f4)
-    API_URL=$(cat terraform-outputs.json | grep -o '"api_gateway_url"[^}]*' | grep -o '"value": "[^"]*' | cut -d'"' -f4)
+    BUCKET_NAME=$(get_tf_output "website_bucket_name")
+    API_URL=$(get_tf_output "api_gateway_url")
     
     # Update frontend with API URL
     log_info "Configuring frontend with API URL..."
@@ -300,9 +330,9 @@ display_completion_info() {
     echo ""
     
     # Extract outputs
-    WEBSITE_URL=$(cat terraform-outputs.json | grep -o '"website_url"[^}]*' | grep -o '"value": "[^"]*' | cut -d'"' -f4)
-    API_URL=$(cat terraform-outputs.json | grep -o '"api_gateway_url"[^}]*' | grep -o '"value": "[^"]*' | cut -d'"' -f4)
-    ALERT_EMAIL=$(cat terraform/terraform.tfvars | grep alert_email | cut -d'"' -f2)
+    WEBSITE_URL=$(get_tf_output "website_url")
+    API_URL=$(get_tf_output "api_gateway_url")
+    ALERT_EMAIL=$(grep -E '^\s*alert_email\s*=' "$ROOT_DIR/terraform/terraform.tfvars" | sed -n 's/.*"\([^"]*\)".*/\1/p')
     
     echo -e "${GREEN}📱 Website URL:${NC}"
     echo "   $WEBSITE_URL"
@@ -339,6 +369,7 @@ display_completion_info() {
 # Main installation flow
 main() {
     print_banner
+    cd "$ROOT_DIR"
     
     # Step 1: Check prerequisites
     check_prerequisites

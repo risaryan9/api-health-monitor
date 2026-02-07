@@ -10,7 +10,7 @@ output "website_bucket_name" {
 
 output "api_gateway_url" {
   description = "URL of the API Gateway"
-  value       = "${aws_api_gateway_deployment.main.invoke_url}${aws_api_gateway_stage.prod.stage_name}"
+  value       = aws_api_gateway_stage.prod.invoke_url
 }
 
 output "api_handler_function_name" {
