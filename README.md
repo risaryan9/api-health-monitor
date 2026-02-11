@@ -97,5 +97,4 @@
 
 ## Credits
 
-- **By:** [Abhiram Rakesh](https://www.linkedin.com/in/abhiram-rakesh/)
-- **For:** Hyperverge
+- **By:** [Aryan R](https://www.linkedin.com/in/aryan-r-a54b48358/?skipRedirect=true)
